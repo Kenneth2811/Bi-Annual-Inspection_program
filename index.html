@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bi-Annual Inspection & Analytics</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
   <!-- Export Libraries (PDF, Excel & HTML Canvas for Visual Chart Capture) -->
@@ -1163,35 +1163,42 @@
   }
 
   async function removeRecord(targetId) {
-    if (!confirm("Are you sure you want to remove this inspection record from both the UI and Google Sheets?")) {
+    if (!confirm("Are you sure you want to permanently remove this inspection record from the database?")) {
       return;
     }
 
     const webAppUrl = localStorage.getItem('sheetsUrl') || DEFAULT_WEB_APP_URL;
 
     try {
+      // Send the delete request to Google Sheets backend
       const response = await fetch(webAppUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'delete',
-          id: targetId
-        })
+        body: JSON.stringify({ action: 'delete', id: targetId })
       });
 
-      const result = await response.json();
+      const responseText = await response.text();
+      let result;
+
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        throw new Error('Received non-JSON response from server.');
+      }
 
       if (result && (result.status === 'success' || result.result === 'success')) {
+        // If successful on backend, remove from local storage and update UI
         inspectionHistory = inspectionHistory.filter(r => r.id !== targetId);
         localStorage.setItem('inspectionHistory', JSON.stringify(inspectionHistory));
         renderHistoryTable();
-        alert("Record successfully deleted from database and UI.");
+        alert("Record removed from database successfully.");
       } else {
-        alert("Failed to delete record: " + (result.message || 'Unknown error'));
+        const errMsg = result.message || result.error || 'Unknown error returned from Apps Script.';
+        alert('Error deleting record from Google Sheets: ' + errMsg);
       }
     } catch (error) {
-      console.error('Deletion Error:', error);
-      alert('Connection error while trying to delete the record.');
+      console.error('Delete Error:', error);
+      alert('Failed to delete record: ' + error.message);
     }
   }
 
@@ -1535,6 +1542,7 @@
     document.getElementById('kpi-health').innerText = `${health}%`;
     document.getElementById('kpi-bad-count').innerText = totalBad;
 
+    // Update cube visual based on passed vs failed records count
     updateCubeVisual(passedRecordsCount, failedRecordsCount);
 
     const sortedCats = Object.entries(catFailures).sort((a, b) => b[1] - a[1]);
