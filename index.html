@@ -506,13 +506,13 @@
         </div>
       </div>
 
-      <!-- 3D Cube Comparison Widget: Passed vs Failed Data -->
+      <!-- 3D Cube Comparison Widget: Passed vs Failed Records -->
       <div class="card-theme p-5 rounded-xl border shadow-sm space-y-4" style="border-color: var(--border-color)">
         <div class="flex items-center justify-between border-b pb-2" style="border-color: var(--border-color)">
           <h3 class="font-bold text-sm flex items-center gap-2">
-            <i class="fa-solid fa-cube text-indigo-500"></i> Passed vs Failed Visual Cube Comparison
+            <i class="fa-solid fa-cube text-indigo-500"></i> Passed vs Failed Records Visual Cube Comparison
           </h3>
-          <span class="text-xs font-semibold text-gray-400">3D Interactive Data Split</span>
+          <span class="text-xs font-semibold text-gray-400">3D Interactive Record Split</span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -548,22 +548,22 @@
             <div class="p-3.5 rounded-lg border bg-emerald-50/50 card-theme flex items-center justify-between" style="border-color: var(--border-color)">
               <div class="flex items-center gap-2.5">
                 <div class="w-3.5 h-3.5 rounded bg-emerald-500"></div>
-                <span class="font-bold text-xs uppercase tracking-wider text-emerald-800">Passed Items</span>
+                <span class="font-bold text-xs uppercase tracking-wider text-emerald-800">Passed Records</span>
               </div>
               <div class="text-right">
                 <div class="text-lg font-bold text-emerald-600" id="cube-pass-percentage">0%</div>
-                <div class="text-[10px] text-gray-500" id="cube-pass-count">0 items</div>
+                <div class="text-[10px] text-gray-500" id="cube-pass-count">0 records</div>
               </div>
             </div>
 
             <div class="p-3.5 rounded-lg border bg-rose-50/50 card-theme flex items-center justify-between" style="border-color: var(--border-color)">
               <div class="flex items-center gap-2.5">
                 <div class="w-3.5 h-3.5 rounded bg-rose-500"></div>
-                <span class="font-bold text-xs uppercase tracking-wider text-rose-800">Failed Items</span>
+                <span class="font-bold text-xs uppercase tracking-wider text-rose-800">Failed Records</span>
               </div>
               <div class="text-right">
                 <div class="text-lg font-bold text-rose-600" id="cube-fail-percentage">0%</div>
-                <div class="text-[10px] text-gray-500" id="cube-fail-count">0 items</div>
+                <div class="text-[10px] text-gray-500" id="cube-fail-count">0 records</div>
               </div>
             </div>
           </div>
@@ -1447,6 +1447,9 @@
     let totalGood = 0;
     let totalBad = 0;
     let perfectPasses = 0;
+    let passedRecordsCount = 0;
+    let failedRecordsCount = 0;
+
     const catFailures = {};
     const itemFailures = {};
     const classPerf = {};
@@ -1458,11 +1461,17 @@
 
     filtered.forEach(rec => {
       const good = rec.goodCount || 0;
-      const bad = rec.badCount || 0;
+      const bad = rec.badCount !== undefined ? rec.badCount : (rec.checklist ? rec.checklist.filter(c => c.status === 'Bad').length : 0);
 
       totalGood += good;
       totalBad += bad;
-      if (bad === 0) perfectPasses++;
+      
+      if (bad === 0) {
+        perfectPasses++;
+        passedRecordsCount++;
+      } else {
+        failedRecordsCount++;
+      }
 
       (rec.checklist || []).forEach(d => {
         if (d.status === 'Bad') {
@@ -1502,7 +1511,8 @@
     document.getElementById('kpi-health').innerText = `${health}%`;
     document.getElementById('kpi-bad-count').innerText = totalBad;
 
-    updateCubeVisual(totalGood, totalBad);
+    // Update cube visual based on passed vs failed records count
+    updateCubeVisual(passedRecordsCount, failedRecordsCount);
 
     const sortedCats = Object.entries(catFailures).sort((a, b) => b[1] - a[1]);
     const highestRiskCategoryName = sortedCats.length > 0 ? sortedCats[0][0] : "None";
@@ -1592,15 +1602,15 @@
     });
   }
 
-  function updateCubeVisual(passedCount, failedCount) {
-    const total = passedCount + failedCount;
-    const passPct = total > 0 ? ((passedCount / total) * 100) : 0;
-    const failPct = total > 0 ? ((failedCount / total) * 100) : 0;
+  function updateCubeVisual(passedRecordsCount, failedRecordsCount) {
+    const total = passedRecordsCount + failedRecordsCount;
+    const passPct = total > 0 ? ((passedRecordsCount / total) * 100) : 0;
+    const failPct = total > 0 ? ((failedRecordsCount / total) * 100) : 0;
 
     document.getElementById('cube-pass-percentage').innerText = `${passPct.toFixed(1)}%`;
     document.getElementById('cube-fail-percentage').innerText = `${failPct.toFixed(1)}%`;
-    document.getElementById('cube-pass-count').innerText = `${passedCount.toLocaleString()} passed checks`;
-    document.getElementById('cube-fail-count').innerText = `${failedCount.toLocaleString()} failed defects`;
+    document.getElementById('cube-pass-count').innerText = `${passedRecordsCount.toLocaleString()} passed records`;
+    document.getElementById('cube-fail-count').innerText = `${failedRecordsCount.toLocaleString()} failed records`;
 
     ['front', 'back', 'right', 'left'].forEach(face => {
       const passElem = document.getElementById(`cube-${face}-pass`);
