@@ -983,8 +983,11 @@
       });
     });
 
-    const recordId = editingRecordId ? editingRecordId : ('INS-' + Date.now());
+    const isUpdating = editingRecordId !== null;
+    const recordId = isUpdating ? editingRecordId : ('INS-' + Date.now());
+    
     const record = {
+      action: isUpdating ? 'update' : 'create',
       id: recordId,
       regNo: document.getElementById('regNo').value,
       vehicleType: document.getElementById('vehicleType').value,
@@ -1019,7 +1022,7 @@
       }
 
       if (result && (result.status === 'success' || result.result === 'success')) {
-        if (editingRecordId) {
+        if (isUpdating) {
           const idx = inspectionHistory.findIndex(r => r.id === editingRecordId);
           if (idx !== -1) inspectionHistory[idx] = record;
           else inspectionHistory.unshift(record);
