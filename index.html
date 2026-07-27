@@ -166,7 +166,7 @@
         <i class="fa-solid fa-chart-pie"></i> Management Dashboard
       </button>
 
-      <!-- NEW: ARCHIVE TAB -->
+      <!-- ARCHIVE TAB -->
       <button onclick="switchTab('archive')" id="tab-archive" class="px-4 py-2.5 text-xs sm:text-sm font-semibold text-gray-500 hover:text-blue-600 flex items-center gap-2 shrink-0">
         <i class="fa-solid fa-box-archive"></i> Archives
       </button>
@@ -220,9 +220,20 @@
               </select>
             </div>
 
+            <!-- OMC Name locked strictly to list system options -->
             <div>
               <label class="block text-xs font-semibold mb-1" style="color: var(--text-muted)">OMC Name *</label>
-              <input type="text" id="omc" required placeholder="e.g. Shell / Total / GOIL" class="w-full px-3 py-2 text-sm rounded-lg border bg-transparent outline-none" style="border-color: var(--border-color)">
+              <select id="omc" required class="w-full px-3 py-2 text-sm rounded-lg border bg-transparent outline-none" style="border-color: var(--border-color)">
+                <option value="">Select OMC from system list...</option>
+                <option value="Shell">Shell</option>
+                <option value="Total">Total</option>
+                <option value="GOIL">GOIL</option>
+                <option value="Puma">Puma</option>
+                <option value="Engen">Engen</option>
+                <option value="Zen">Zen</option>
+                <option value="TotalEnergies">TotalEnergies</option>
+                <option value="Vivo Energy">Vivo Energy</option>
+              </select>
             </div>
 
             <div>
@@ -284,7 +295,7 @@
 
             <!-- Mechanic -->
             <div class="space-y-3 border p-4 rounded-lg" style="border-color: var(--border-color)">
-              <h3 class="font-semibold text-sm border-b pb-1" style="border-color: var(--border-color)">Workshop Supervisor</h3>
+              <h3 class="font-semibold text-sm border-b pb-1" style="border-color: var(--border-color)">Mechanic (Workshop Supervisor)</h3>
               <div>
                 <label class="block text-xs font-semibold mb-1" style="color: var(--text-muted)">Full Name *</label>
                 <input type="text" id="mechanicName" required class="w-full px-2.5 py-1.5 text-sm rounded border bg-transparent outline-none" style="border-color: var(--border-color)">
@@ -818,6 +829,7 @@
   ];
 
   let inspectionHistory = JSON.parse(localStorage.getItem('inspectionHistory') || '[]');
+  let editingRecordId = null; // Track if currently editing a record
 
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('inspectionDate').valueAsDate = new Date();
@@ -971,8 +983,9 @@
       });
     });
 
+    const recordId = editingRecordId ? editingRecordId : ('INS-' + Date.now());
     const record = {
-      id: 'INS-' + Date.now(),
+      id: recordId,
       regNo: document.getElementById('regNo').value,
       vehicleType: document.getElementById('vehicleType').value,
       omc: document.getElementById('omc').value,
@@ -1006,11 +1019,19 @@
       }
 
       if (result && (result.status === 'success' || result.result === 'success')) {
-        inspectionHistory.unshift(record);
+        if (editingRecordId) {
+          const idx = inspectionHistory.findIndex(r => r.id === editingRecordId);
+          if (idx !== -1) inspectionHistory[idx] = record;
+          else inspectionHistory.unshift(record);
+          editingRecordId = null;
+        } else {
+          inspectionHistory.unshift(record);
+        }
         localStorage.setItem('inspectionHistory', JSON.stringify(inspectionHistory));
 
         alert('Inspection saved to Google Sheets!');
         document.getElementById('inspectionForm').reset();
+        document.getElementById('inspectionDate').valueAsDate = new Date();
         renderChecklist();
         switchTab('history');
       } else {
@@ -1079,14 +1100,75 @@
               ? `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-700">Failed</span>`
               : `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-700">Passed</span>`}
           </td>
-          <td class="p-3 text-right">
-            <button onclick="viewDetail('${rec.id}')" class="px-2.5 py-1 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 rounded font-semibold transition">
-              View
+          <td class="p-3 text-right space-x-1">
+            <button onclick="viewDetail('${rec.id}')" class="px-2 py-1 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 rounded font-semibold transition" title="View details">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+            <button onclick="editRecord('${rec.id}')" class="px-2 py-1 text-xs bg-amber-50 text-amber-600 hover:bg-amber-100 rounded font-semibold transition" title="Edit record">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button onclick="removeRecord('${rec.id}')" class="px-2 py-1 text-xs bg-red-50 text-red-600 hover:bg-red-100 rounded font-semibold transition" title="Remove record">
+              <i class="fa-solid fa-trash"></i>
             </button>
           </td>
         </tr>
       `;
     }).join('');
+  }
+
+  function editRecord(targetId) {
+    const rec = inspectionHistory.find(r => r.id === targetId);
+    if (!rec) return;
+
+    editingRecordId = rec.id;
+    
+    // Populate form fields
+    document.getElementById('regNo').value = rec.regNo || '';
+    document.getElementById('vehicleType').value = rec.vehicleType || '';
+    document.getElementById('omc').value = rec.omc || '';
+    document.getElementById('odometer').value = rec.odometer !== 'N/A' ? rec.odometer : '';
+    document.getElementById('inspectionDate').value = rec.inspectionDate || rec.date || '';
+    document.getElementById('location').value = rec.location || '';
+    document.getElementById('officerName').value = rec.officerName || '';
+    document.getElementById('mechanicName').value = rec.mechanicName || '';
+    document.getElementById('driverName').value = rec.driverName || '';
+
+    // Populate checklist selections & comments
+    const checklistItems = rec.checklist || rec.details || [];
+    inspectionCategories.forEach((cat, catIdx) => {
+      cat.items.forEach((item, itemIdx) => {
+        const fieldName = `item_${catIdx}_${itemIdx}`;
+        const match = checklistItems.find(c => c.category === cat.title && c.item === item);
+        
+        if (match) {
+          const radioGood = document.getElementById(`${fieldName}_good`);
+          const radioBad = document.getElementById(`${fieldName}_bad`);
+          const commentInput = document.getElementById(`comment_${fieldName}`);
+
+          if (match.status === 'Bad') {
+            if (radioBad) radioBad.checked = true;
+            toggleCommentary(fieldName, true);
+            if (commentInput) commentInput.value = match.comment || '';
+          } else {
+            if (radioGood) radioGood.checked = true;
+            toggleCommentary(fieldName, false);
+          }
+        }
+      });
+    });
+
+    // Switch to new/edit tab
+    switchTab('new');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function removeRecord(targetId) {
+    if (confirm("Are you sure you want to remove this inspection record?")) {
+      inspectionHistory = inspectionHistory.filter(r => r.id !== targetId);
+      localStorage.setItem('inspectionHistory', JSON.stringify(inspectionHistory));
+      renderHistoryTable();
+      alert("Record removed successfully.");
+    }
   }
 
   function viewDetail(targetId) {
@@ -1300,7 +1382,6 @@
 
     const sortedYears = Array.from(years).sort((a, b) => b - a);
     
-    // Default to current active year if available
     const activeYear = new Date().getFullYear();
     yearSelect.innerHTML = `<option value="ALL">All Years</option>` + 
       sortedYears.map(y => `<option value="${y}" ${y === activeYear ? 'selected' : ''}>${y}</option>`).join('');
@@ -1351,7 +1432,6 @@
       document.getElementById('cumulativeComment').innerText = "No cumulative inspection data available for the selected period.";
       document.getElementById('doughnutSubLegend').innerText = "Passed: 0% | Failed: 0%";
       
-      // Reset 3D Cube Visual Widget State
       updateCubeVisual(0, 0);
 
       document.getElementById('analyticsHotspots').innerHTML = `<p class="text-xs text-gray-400">No inspection data for selected period.</p>`;
@@ -1372,10 +1452,9 @@
     const classPerf = {};
     const omcPerf = {};
 
-    // Standard monthly arrays (Jan to Dec = indexes 0 to 11) for current selected year comparison
     const monthlyDefectsList = new Array(12).fill(0);
-    const monthlyPassCompList = new Array(12).fill(0); // All Pass checks count
-    const monthlyFailCompList = new Array(12).fill(0); // All Fail checks count
+    const monthlyPassCompList = new Array(12).fill(0);
+    const monthlyFailCompList = new Array(12).fill(0);
 
     filtered.forEach(rec => {
       const good = rec.goodCount || 0;
@@ -1385,7 +1464,6 @@
       totalBad += bad;
       if (bad === 0) perfectPasses++;
 
-      // Questionnaire defect counts
       (rec.checklist || []).forEach(d => {
         if (d.status === 'Bad') {
           catFailures[d.category] = (catFailures[d.category] || 0) + 1;
@@ -1393,25 +1471,22 @@
         }
       });
 
-      // Class Performance
       const type = rec.vehicleType || 'Unassigned';
       if (!classPerf[type]) classPerf[type] = { good: 0, total: 0, count: 0 };
       classPerf[type].good += good;
       classPerf[type].total += (good + bad);
       classPerf[type].count++;
 
-      // OMC Performance
       const omc = rec.omc || 'Unspecified';
       if (!omcPerf[omc]) omcPerf[omc] = { bad: 0, count: 0 };
       omcPerf[omc].bad += bad;
       omcPerf[omc].count++;
 
-      // Monthly breakdown for selected year comparison
       const dateStr = rec.inspectionDate || rec.date;
       if (dateStr) {
         const d = new Date(dateStr);
         if (!isNaN(d.getTime())) {
-          const mIdx = d.getMonth(); // 0 to 11
+          const mIdx = d.getMonth();
           monthlyDefectsList[mIdx] += bad;
           
           if (bad === 0) {
@@ -1427,14 +1502,12 @@
     document.getElementById('kpi-health').innerText = `${health}%`;
     document.getElementById('kpi-bad-count').innerText = totalBad;
 
-    // Render 3D Visual Cube Segment Comparison
     updateCubeVisual(totalGood, totalBad);
 
     const sortedCats = Object.entries(catFailures).sort((a, b) => b[1] - a[1]);
     const highestRiskCategoryName = sortedCats.length > 0 ? sortedCats[0][0] : "None";
     document.getElementById('kpi-risk-cat').innerText = highestRiskCategoryName;
 
-    // Calculate highest risk check item and display item along with its occurrence count
     const sortedItems = Object.entries(itemFailures).sort((a, b) => b[1] - a[1]);
     const highestRiskCheckText = sortedItems.length > 0 
       ? `${sortedItems[0][0]} (${sortedItems[0][1]})` 
@@ -1453,7 +1526,6 @@
     document.getElementById('kpi-top-omc').innerText = topOmcName;
     document.getElementById('kpi-compliance').innerText = "100%";
 
-    // Render Cumulative Comment Analysis
     const totalChecks = totalGood + totalBad;
     const goodPercent = Math.round((totalGood / (totalChecks || 1)) * 100);
     const badPercent = Math.round((totalBad / (totalChecks || 1)) * 100);
@@ -1468,7 +1540,6 @@
       The primary driver of risk in the fleet is the <strong>${highestRiskCategoryName}</strong> category, which recorded the highest concentration of total failures.
     `;
 
-    // Render Hotspots & Class UI lists
     const hotspotContainer = document.getElementById('analyticsHotspots');
     hotspotContainer.innerHTML = sortedCats.slice(0, 5).map(([cat, count]) => `
       <div>
@@ -1511,7 +1582,6 @@
       </div>
     `).join('') || `<p class="text-xs text-gray-400 col-span-full">No OMC data logged yet.</p>`;
 
-    // --- RENDER UPDATED CHARTS WITH PERCENTAGES & COMPARISONS ---
     renderAnalyticsCharts({
       totalGood,
       totalBad,
@@ -1522,19 +1592,16 @@
     });
   }
 
-  // Visual Cube Render Helper Function
   function updateCubeVisual(passedCount, failedCount) {
     const total = passedCount + failedCount;
     const passPct = total > 0 ? ((passedCount / total) * 100) : 0;
     const failPct = total > 0 ? ((failedCount / total) * 100) : 0;
 
-    // Update Text Data Indicators
     document.getElementById('cube-pass-percentage').innerText = `${passPct.toFixed(1)}%`;
     document.getElementById('cube-fail-percentage').innerText = `${failPct.toFixed(1)}%`;
     document.getElementById('cube-pass-count').innerText = `${passedCount.toLocaleString()} passed checks`;
     document.getElementById('cube-fail-count').innerText = `${failedCount.toLocaleString()} failed defects`;
 
-    // Adjust 3D Cube Portion Heights for Front, Back, Right, and Left Faces
     ['front', 'back', 'right', 'left'].forEach(face => {
       const passElem = document.getElementById(`cube-${face}-pass`);
       const failElem = document.getElementById(`cube-${face}-fail`);
@@ -1551,7 +1618,6 @@
     const goodPct = totalChecks > 0 ? ((data.totalGood / totalChecks) * 100).toFixed(1) : 0;
     const badPct = totalChecks > 0 ? ((data.totalBad / totalChecks) * 100).toFixed(1) : 0;
 
-    // Update Percentage Legend beneath Doughnut visual
     const subLegend = document.getElementById('doughnutSubLegend');
     if (subLegend) {
       subLegend.innerHTML = `
@@ -1560,7 +1626,6 @@
       `;
     }
 
-    // 1. Doughnut Visual with Percentages
     if (chartInstances.cumulative) chartInstances.cumulative.destroy();
     const ctxCum = document.getElementById('chartCumulativePassFail').getContext('2d');
     chartInstances.cumulative = new Chart(ctxCum, {
@@ -1591,7 +1656,6 @@
       }
     });
 
-    // 2. Questionnaire Category Failure Occurrences Bar Chart + Percentage Annotations
     if (chartInstances.category) chartInstances.category.destroy();
     const catLabels = inspectionCategories.map(c => c.title);
     const catCounts = catLabels.map(title => data.catFailures[title] || 0);
@@ -1633,10 +1697,8 @@
       }
     });
 
-    // Month Names Array for Current Year comparison
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    // 3. Total Defects Detected Each Month (Current Year Month-by-Month comparison)
     if (chartInstances.monthlyFailures) chartInstances.monthlyFailures.destroy();
 
     const ctxMonthFail = document.getElementById('chartMonthlyFailures').getContext('2d');
@@ -1672,10 +1734,8 @@
       }
     });
 
-    // 4. Monthly Failure vs Pass Rate Visual (%)
     if (chartInstances.monthlyRates) chartInstances.monthlyRates.destroy();
     
-    // Calculate Percentages per month
     const monthlyPassRates = [];
     const monthlyFailRates = [];
 
@@ -1738,8 +1798,6 @@
     });
   }
 
-  // --- VISUAL EXPORT ANALYTICS FUNCTIONS ---
-
   async function exportAnalyticsPDF() {
     const filtered = getFilteredAnalyticsData();
     if (filtered.length === 0) {
@@ -1758,7 +1816,6 @@
       const selectedYear = document.getElementById('analyticsYearFilter').value;
       const selectedMonth = document.getElementById('analyticsMonthFilter').selectedOptions[0].text;
 
-      // Title & Subtitle Header
       doc.setFontSize(18);
       doc.setTextColor(37, 99, 235);
       doc.text("Executive Management Analytics Dashboard", 40, 40);
@@ -1768,7 +1825,6 @@
       doc.text(`Filter Period: ${selectedYear} - ${selectedMonth}`, 40, 55);
       doc.text(`Generated On: ${new Date().toLocaleDateString()}`, 40, 68);
 
-      // 1. KPI Summary Data Table
       const health = document.getElementById('kpi-health').innerText;
       const defects = document.getElementById('kpi-bad-count').innerText;
       const topRisk = document.getElementById('kpi-risk-cat').innerText;
@@ -1793,7 +1849,6 @@
         styles: { fontSize: 8.5 }
       });
 
-      // Render Visual Charts into PDF Pages via Canvas Captures
       let currentY = doc.lastAutoTable.finalY + 20;
 
       const chartIds = [
@@ -1814,407 +1869,48 @@
           }
 
           doc.setFontSize(11);
-          doc.setTextColor(15, 23, 42);
+          doc.setTextColor(37, 99, 235);
           doc.text(item.title, 40, currentY);
+          currentY += 10;
 
-          // Standardized Chart dimensions inside PDF
-          doc.addImage(imgData, 'PNG', 40, currentY + 10, 515, 180);
-          currentY += 210;
+          doc.addImage(imgData, 'PNG', 40, currentY, 515, 200);
+          currentY += 215;
         }
       }
 
-      doc.save(`Management_Analytics_Visuals_${selectedYear}_${selectedMonth}.pdf`);
+      doc.save(`Executive_Analytics_Report_${selectedYear}_${selectedMonth.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
-      console.error("PDF Export Error: ", err);
-      alert("An error occurred while generating visual PDF export.");
+      console.error('PDF Export Error:', err);
+      alert('Failed to generate Analytics PDF: ' + err.message);
     } finally {
       btn.disabled = false;
       btn.innerHTML = origText;
     }
   }
 
-  async function exportAnalyticsExcel() {
+  function exportAnalyticsExcel() {
     const filtered = getFilteredAnalyticsData();
     if (filtered.length === 0) {
-      alert("No analytics data available to export for this period!");
+      alert("No analytics data available to export!");
       return;
     }
 
-    const btn = document.getElementById('btnExcelExport');
-    const origText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating Excel Visuals...`;
-
-    try {
-      const selectedYear = document.getElementById('analyticsYearFilter').value;
-      const selectedMonth = document.getElementById('analyticsMonthFilter').selectedOptions[0].text;
-
-      // Create an Excel HTML Document structure with embedded visuals as Base64 Image Tags
-      let excelHtml = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <!--[if gte mso 9]>
-          <xml>
-            <x:ExcelWorkbook>
-              <x:ExcelWorksheets>
-                <x:ExcelWorksheet>
-                  <x:Name>Analytics Dashboard</x:Name>
-                  <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-                </x:ExcelWorksheet>
-              </x:ExcelWorksheets>
-            </x:ExcelWorkbook>
-          </xml>
-          <![endif]-->
-          <style>
-            body { font-family: Arial, sans-serif; }
-            table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-            th { background-color: #2563eb; color: white; border: 1px solid #ccc; padding: 8px; text-align: left; }
-            td { border: 1px solid #ccc; padding: 8px; }
-            .section-title { font-size: 14px; font-weight: bold; color: #1e3a8a; margin-top: 20px; margin-bottom: 10px; }
-          </style>
-        </head>
-        <body>
-          <h2>Management Analytics Visual Report</h2>
-          <p><b>Filter Period:</b> ${selectedYear} - ${selectedMonth}</p>
-          <p><b>Generated On:</b> ${new Date().toLocaleDateString()}</p>
-          
-          <br/>
-          <table>
-            <thead>
-              <tr><th>Executive Metric</th><th>Value</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Total Inspections Conducted</td><td>${filtered.length}</td></tr>
-              <tr><td>Fleet Health Index</td><td>${document.getElementById('kpi-health').innerText}</td></tr>
-              <tr><td>Active Defect Flags</td><td>${document.getElementById('kpi-bad-count').innerText}</td></tr>
-              <tr><td>Highest Risk Category</td><td>${document.getElementById('kpi-risk-cat').innerText}</td></tr>
-              <tr><td>First-Time Pass Rate</td><td>${document.getElementById('kpi-pass-rate').innerText}</td></tr>
-              <tr><td>Defect Density</td><td>${document.getElementById('kpi-defect-density').innerText}</td></tr>
-              <tr><td>Highest Defect OMC Partner</td><td>${document.getElementById('kpi-top-omc').innerText}</td></tr>
-            </tbody>
-          </table>
-
-          <div class="section-title">Dashboard Visuals & Charts</div>
-      `;
-
-      const chartIds = [
-        { id: 'chartCumulativePassFail', title: 'Cumulative Inspection Results' },
-        { id: 'chartCategoryFailures', title: 'Questionnaire Category Failure Comparison' },
-        { id: 'chartMonthlyFailures', title: 'Total Defects Detected Each Month' },
-        { id: 'chartMonthlyRates', title: 'Monthly Failure vs Pass Rate (%)' }
-      ];
-
-      for (const item of chartIds) {
-        const canvas = document.getElementById(item.id);
-        if (canvas) {
-          const imgData = canvas.toDataURL('image/png', 1.0);
-          excelHtml += `
-            <div style="margin-top: 15px;">
-              <h4>${item.title}</h4>
-              <img src="${imgData}" width="600" height="260" alt="${item.title}" />
-            </div>
-            <br/>
-          `;
-        }
-      }
-
-      excelHtml += `</body></html>`;
-
-      const blob = new Blob([excelHtml], { type: 'application/vnd.ms-excel' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Management_Analytics_Visuals_${selectedYear}_${selectedMonth}.xls`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-    } catch (err) {
-      console.error("Excel Export Error: ", err);
-      alert("An error occurred while generating visual Excel export.");
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = origText;
-    }
-  }
-
-  // --- AUTOMATED ARCHIVE ENGINE & TAB LOGIC ---
-
-  let selectedArchiveYear = null;
-  let selectedArchiveMonth = 'ALL';
-  let activeArchiveViewMode = 'records'; // 'records' or 'summary'
-
-  // Dynamic Date Checker for End-of-Year Auto-Archiving
-  function isRecordArchived(recDateStr) {
-    if (!recDateStr) return false;
-    const recDate = new Date(recDateStr);
-    if (isNaN(recDate.getTime())) return false;
-
-    const recYear = recDate.getFullYear();
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-
-    // On or after the last day of an active year (Dec 31st), records for completed years are archived.
-    // Completed years (recYear < currentYear) are automatically classified into the archive system.
-    if (recYear < currentYear) {
-      return true;
-    }
-
-    // Checking last day of active current year
-    const isLastDayOfCurrentYear = (currentDate.getMonth() === 11 && currentDate.getDate() >= 31);
-    if (recYear === currentYear && isLastDayOfCurrentYear) {
-      return true;
-    }
-
-    return false;
-  }
-
-  function getArchivedRecords() {
-    return inspectionHistory.filter(rec => {
-      const dateStr = rec.inspectionDate || rec.date;
-      return isRecordArchived(dateStr);
-    });
-  }
-
-  function renderArchiveSystem() {
-    const archivedData = getArchivedRecords();
-    const yearsContainer = document.getElementById('archiveYearsList');
-    const monthContainer = document.getElementById('archiveMonthContainer');
-
-    // Gather unique archive years
-    const archivedYearsSet = new Set();
-    archivedData.forEach(r => {
-      const d = new Date(r.inspectionDate || r.date);
-      if (!isNaN(d.getFullYear())) archivedYearsSet.add(d.getFullYear());
-    });
-
-    const sortedArchiveYears = Array.from(archivedYearsSet).sort((a, b) => b - a);
-
-    if (sortedArchiveYears.length === 0) {
-      yearsContainer.innerHTML = `<p class="text-xs text-gray-400">No archived years available yet. Auto-archive triggers on year-end completion.</p>`;
-      monthContainer.classList.add('hidden');
-      renderArchiveContent([]);
-      return;
-    }
-
-    // Default to most recent archived year if none selected
-    if (!selectedArchiveYear || !archivedYearsSet.has(Number(selectedArchiveYear))) {
-      selectedArchiveYear = sortedArchiveYears[0];
-    }
-
-    // Render Archive Year Buttons
-    yearsContainer.innerHTML = sortedArchiveYears.map(y => `
-      <button onclick="selectArchiveYear(${y})" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${selectedArchiveYear === y ? 'bg-blue-600 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 card-theme'}">
-        <i class="fa-solid fa-folder-closed mr-1"></i> Year ${y}
-      </button>
-    `).join('');
-
-    // Render Month Buttons under selected year
-    renderArchiveMonthSelector();
-    
-    // Filter dataset by Year + Month and render contents
-    updateArchiveViewDisplay();
-  }
-
-  function selectArchiveYear(year) {
-    selectedArchiveYear = year;
-    selectedArchiveMonth = 'ALL';
-    renderArchiveSystem();
-  }
-
-  function renderArchiveMonthSelector() {
-    const monthContainer = document.getElementById('archiveMonthContainer');
-    const monthsList = document.getElementById('archiveMonthsList');
-    monthContainer.classList.remove('hidden');
-
-    const monthNames = [
-      { idx: 'ALL', name: 'All Months' },
-      { idx: '0', name: 'Jan' }, { idx: '1', name: 'Feb' }, { idx: '2', name: 'Mar' },
-      { idx: '3', name: 'Apr' }, { idx: '4', name: 'May' }, { idx: '5', name: 'Jun' },
-      { idx: '6', name: 'Jul' }, { idx: '7', name: 'Aug' }, { idx: '8', name: 'Sep' },
-      { idx: '9', name: 'Oct' }, { idx: '10', name: 'Nov' }, { idx: '11', name: 'Dec' }
+    const summaryData = [
+      { "Executive Metric": "Total Inspections Conducted", "Value": filtered.length },
+      { "Executive Metric": "Fleet Health Index", "Value": document.getElementById('kpi-health').innerText },
+      { "Executive Metric": "Total Defect Flags Registered", "Value": document.getElementById('kpi-bad-count').innerText },
+      { "Executive Metric": "Highest Risk Category", "Value": document.getElementById('kpi-risk-cat').innerText },
+      { "Executive Metric": "First-Time Pass Rate", "Value": document.getElementById('kpi-pass-rate').innerText },
+      { "Executive Metric": "Defect Density (Per Vehicle)", "Value": document.getElementById('kpi-defect-density').innerText },
+      { "Executive Metric": "Highest Defect OMC Partner", "Value": document.getElementById('kpi-top-omc').innerText }
     ];
 
-    monthsList.innerHTML = monthNames.map(m => `
-      <button onclick="selectArchiveMonth('${m.idx}')" class="px-2.5 py-1 rounded text-xs font-semibold transition ${selectedArchiveMonth === String(m.idx) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 card-theme'}">
-        ${m.name}
-      </button>
-    `).join('');
+    const ws = XLSX.utils.json_to_sheet(summaryData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Executive KPIs");
+
+    XLSX.writeFile(wb, `Management_Analytics_Summary.xlsx`);
   }
-
-  function selectArchiveMonth(mIdx) {
-    selectedArchiveMonth = String(mIdx);
-    renderArchiveMonthSelector();
-    updateArchiveViewDisplay();
-  }
-
-  function setArchiveViewMode(mode) {
-    activeArchiveViewMode = mode;
-    
-    const btnRec = document.getElementById('btnArchiveModeRecords');
-    const btnSum = document.getElementById('btnArchiveModeSummary');
-
-    if (mode === 'records') {
-      btnRec.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white shadow";
-      btnSum.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200";
-      document.getElementById('archiveViewRecords').classList.remove('hidden');
-      document.getElementById('archiveViewSummary').classList.add('hidden');
-    } else {
-      btnSum.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold bg-blue-600 text-white shadow";
-      btnRec.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200";
-      document.getElementById('archiveViewSummary').classList.remove('hidden');
-      document.getElementById('archiveViewRecords').classList.add('hidden');
-    }
-
-    updateArchiveViewDisplay();
-  }
-
-  function getSelectedArchiveFilteredData() {
-    const archivedData = getArchivedRecords();
-    return archivedData.filter(r => {
-      const d = new Date(r.inspectionDate || r.date);
-      if (isNaN(d.getTime())) return false;
-
-      if (selectedArchiveYear && d.getFullYear() !== Number(selectedArchiveYear)) return false;
-      if (selectedArchiveMonth !== 'ALL' && d.getMonth() !== Number(selectedArchiveMonth)) return false;
-
-      return true;
-    });
-  }
-
-  function updateArchiveViewDisplay() {
-    const dataset = getSelectedArchiveFilteredData();
-
-    if (activeArchiveViewMode === 'records') {
-      renderArchiveTable(dataset);
-    } else {
-      renderArchiveSummary(dataset);
-    }
-  }
-
-  function renderArchiveTable(records) {
-    const tbody = document.getElementById('archiveTableBody');
-    if (records.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-xs text-gray-400">No archived records found for the selected period.</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = records.map(rec => {
-      const displayDate = rec.inspectionDate || rec.date || 'N/A';
-      const defects = rec.badCount !== undefined ? rec.badCount : (rec.checklist ? rec.checklist.filter(c => c.status === 'Bad').length : 0);
-
-      return `
-        <tr class="hover:bg-gray-50/50">
-          <td class="p-3 font-medium text-xs">${displayDate}</td>
-          <td class="p-3 font-semibold text-xs">${rec.regNo}</td>
-          <td class="p-3 text-xs">${rec.omc}</td>
-          <td class="p-3 text-xs">${rec.driverName}</td>
-          <td class="p-3 text-xs">${rec.officerName}</td>
-          <td class="p-3 text-xs">
-            ${defects > 0 
-              ? `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-700">Failed</span>`
-              : `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-700">Passed</span>`}
-          </td>
-          <td class="p-3 text-right">
-            <button onclick="viewDetail('${rec.id}')" class="px-2.5 py-1 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 rounded font-semibold transition">
-              View
-            </button>
-          </td>
-        </tr>
-      `;
-    }).join('');
-  }
-
-  function renderArchiveSummary(records) {
-    const total = records.length;
-    document.getElementById('arch-kpi-total').innerText = total;
-
-    if (total === 0) {
-      document.getElementById('arch-kpi-health').innerText = "0%";
-      document.getElementById('arch-kpi-bad').innerText = "0";
-      document.getElementById('arch-kpi-pass').innerText = "0%";
-      document.getElementById('archiveSummaryComment').innerText = "No archived records available for the chosen year/month selection.";
-      document.getElementById('archiveHotspots').innerHTML = `<p class="text-xs text-gray-400">No data registered.</p>`;
-      document.getElementById('archiveOmcPerformance').innerHTML = `<p class="text-xs text-gray-400 col-span-full">No data registered.</p>`;
-      return;
-    }
-
-    let totalGood = 0;
-    let totalBad = 0;
-    let perfectPasses = 0;
-    const catFailures = {};
-    const omcPerf = {};
-
-    records.forEach(rec => {
-      const good = rec.goodCount || 0;
-      const bad = rec.badCount || 0;
-      totalGood += good;
-      totalBad += bad;
-
-      if (bad === 0) perfectPasses++;
-
-      (rec.checklist || []).forEach(d => {
-        if (d.status === 'Bad') catFailures[d.category] = (catFailures[d.category] || 0) + 1;
-      });
-
-      const omc = rec.omc || 'Unspecified';
-      if (!omcPerf[omc]) omcPerf[omc] = { bad: 0, count: 0 };
-      omcPerf[omc].bad += bad;
-      omcPerf[omc].count++;
-    });
-
-    const health = Math.round((totalGood / (totalGood + totalBad || 1)) * 100);
-    const passRate = Math.round((perfectPasses / total) * 100);
-
-    document.getElementById('arch-kpi-health').innerText = `${health}%`;
-    document.getElementById('arch-kpi-bad').innerText = totalBad;
-    document.getElementById('arch-kpi-pass').innerText = `${passRate}%`;
-
-    const monthLabel = selectedArchiveMonth === 'ALL' ? 'Entire Year' : 'Selected Month';
-    document.getElementById('archiveSummaryComment').innerHTML = `
-      Archived Report Summary for <strong>Year ${selectedArchiveYear} (${monthLabel})</strong>: Evaluated <strong>${total} total historical vehicle inspections</strong>. 
-      Overall archived fleet compliance maintained a <strong>${health}% Fleet Health Index</strong> and achieved a <strong>${passRate}% First-Time Pass Rate</strong>.
-    `;
-
-    // Hotspots list
-    const sortedCats = Object.entries(catFailures).sort((a, b) => b[1] - a[1]);
-    document.getElementById('archiveHotspots').innerHTML = sortedCats.slice(0, 5).map(([cat, count]) => `
-      <div>
-        <div class="flex justify-between text-xs mb-1">
-          <span class="font-medium">${cat}</span>
-          <span class="font-bold text-rose-600">${count} defect(s)</span>
-        </div>
-        <div class="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-          <div class="bg-rose-500 h-2 rounded-full" style="width: ${Math.min((count / (totalBad || 1)) * 100, 100)}%"></div>
-        </div>
-      </div>
-    `).join('') || `<p class="text-xs text-gray-400">No defect hotspots registered in this archived period.</p>`;
-
-    // OMC list
-    document.getElementById('archiveOmcPerformance').innerHTML = Object.entries(omcPerf).map(([omc, data]) => `
-      <div class="p-3 border rounded-lg bg-gray-50/50 card-theme" style="border-color: var(--border-color)">
-        <div class="font-bold text-xs truncate">${omc}</div>
-        <div class="flex justify-between items-center mt-2 text-xs">
-          <span class="text-gray-500">Inspections: <strong>${data.count}</strong></span>
-          <span class="${data.bad > 0 ? 'text-red-600 font-bold' : 'text-emerald-600 font-semibold'}">${data.bad} Defect(s)</span>
-        </div>
-      </div>
-    `).join('') || `<p class="text-xs text-gray-400 col-span-full">No OMC data registered.</p>`;
-  }
-</script>
-
- <!-- Footer -->
-<footer class="mt-12 py-6 border-t card-theme text-center text-xs" style="border-color: var(--border-color); color: var(--text-muted);">
-  <div class="max-w-6xl mx-auto px-4 space-y-1">
-    <p class="font-semibold text-sm" style="color: var(--text-main)">Powered by Maceink Technologies</p>
-    <p>Location: Tema - Ghana</p>
-    <p class="flex items-center justify-center gap-4 flex-wrap mt-1">
-      <span><i class="fa-solid fa-envelope mr-1 text-[var(--brand)]"></i><a href="mailto:info@maceinktech.com" class="hover:underline">info@maceinktech.com</a></span>
-      <span><i class="fa-solid fa-phone mr-1 text-[var(--brand)]"></i><a href="tel:+233545553048" class="hover:underline">+233 54 555 3048</a></span>
-    </p>
-  </div>
-</footer>
-
+  </script>
 </body>
 </html>
